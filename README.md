@@ -75,16 +75,12 @@ lib/sd2-common/       公共库子模块：WiFi 连接/校时/休眠/背光/HTTP
 
 `config.h` 里的 Key 填错/已失效，或当前 Key 没有有效的 OpenCode Go 订阅。
 
-**3. 一直显示 “Syncing time...”**
-
-NTP 服务器不可达，可改 `config.h` 中 `NTP_SERVER`（如 `ntp.tencent.com`、`pool.ntp.org`）。
-
-**4. 屏幕花屏 / 无显示**
+**3. 屏幕花屏 / 无显示**
 
 - 确认是 ST7789 240×240（SD2 标准配置）；屏幕驱动与引脚已固化在 `lib/sd2-common/platformio/tft_setup.h`，仅当硬件不同时才需要改。
 - 背光亮度：`config.h` 中 `BRIGHTNESS`（0~1023）。
 
-**5. 烧录失败**
+**4. 烧录失败**
 
 - 确认数据线是数据线（不是纯充电线）。
 - 上传波特率默认 921600，失败可改为 `upload_speed = 115200`。

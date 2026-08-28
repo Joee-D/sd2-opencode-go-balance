@@ -29,12 +29,10 @@ static sd2::Wifi &wifi = app.wifi;
 static sd2::SleepScheduler &sleepSched = app.sleep;
 static sd2::Backlight &backlight = app.backlight;
 static bool &bootDone = app.bootDone;
-static bool &ntpDone = app.ntpDone;
 static uint32_t &lastFetchMs = app.lastFetchMs;
 
 // ---------- 数据状态 ----------
 static bool hasData = false;
-static bool fetching = false;
 
 static OpenCodeGoUsage lastData;
 
@@ -158,7 +156,7 @@ void drawMainPage() {
 
 // ---------- 公共骨架回调 ----------
 static void onConnected() {
-    if (!sleepSched.sleeping()) drawMainPage();
+    drawMainPage();
 }
 
 static void onWake() {
@@ -166,18 +164,8 @@ static void onWake() {
 }
 
 void handleFetch() {
-    if (!wifi.connected() || fetching || sleepSched.sleeping()) return;
+    if (!wifi.connected() || sleepSched.sleeping()) return;
     if (millis() - lastFetchMs < POLL_INTERVAL_MS) return;
-
-    // 证书校验前先等 NTP 时间同步
-    if (!ntpDone) {
-        if (sd2::timeSynced()) {
-            ntpDone = true;
-            Serial.printf("NTP time synced: %lu\n", (unsigned long)time(nullptr));
-        }
-        return;
-    }
-    if (sleepSched.sleeping()) return; // 休眠时段不拉取数据
 
     // 未填 Key 时直接提示
     if (strlen(OPENCODE_GO_API_KEY) < 20) {
@@ -185,13 +173,8 @@ void handleFetch() {
         return;
     }
 
-    fetching = true;
-
     OpenCodeGoUsage d;
-    ESP.wdtDisable(); // TLS 握手为阻塞操作，暂时关闭软看门狗
     bool ok = fetchOpenCodeGoUsage(d);
-    ESP.wdtEnable(0);
-    fetching = false;
     lastFetchMs = millis();
 
     if (ok) {
