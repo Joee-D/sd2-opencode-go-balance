@@ -4,12 +4,10 @@
 // 接口: GET https://opencode.ai/zen/go/v1/usage
 // Authorization: Bearer <API Key>（Anthropic 兼容 Key）
 // User-Agent 保持 cc-switch/1.0，与 CC Switch 预设一致。
-// 底层 HTTP 读取/解析由 sd2-common 的 sd2::readHttpResponse 提供。
+// 底层 HTTPS/HTTP 读取解析由 sd2-common 的 sd2::Https 提供。
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
 #include <SD2Common.h>
 
 #include "config.h"
@@ -38,7 +36,7 @@ struct OpenCodeGoUsage {
     String error;              // 中文错误描述
 };
 
-static BearSSL::X509List opencodeTrustAnchor(GTS_ROOT_R4_PEM);
+static sd2::Https https(GTS_ROOT_R4_PEM, VERIFY_TLS_CERT);
 
 #define OPENCODE_API_HOST "opencode.ai"
 
@@ -55,60 +53,17 @@ static void parseWindow(const JsonObject &obj, OpenCodeGoWindow &out) {
 static bool fetchOpenCodeGoUsage(OpenCodeGoUsage &out, uint32_t timeout_ms = 15000) {
     out = OpenCodeGoUsage();
 
-    WiFiClientSecure client;
-#if VERIFY_TLS_CERT
-    client.setTrustAnchors(&opencodeTrustAnchor);
-#else
-    client.setInsecure();
-#endif
-    client.setTimeout(timeout_ms / 1000);
-
-    IPAddress apiIp;
-    uint32_t dnsT0 = millis();
-    bool dnsOk = WiFi.hostByName(OPENCODE_API_HOST, apiIp, 3000);
-    Serial.printf("DNS %s -> %s (%lu ms)\n",
-                  OPENCODE_API_HOST,
-                  dnsOk ? apiIp.toString().c_str() : "FAIL",
-                  (unsigned long)(millis() - dnsT0));
-    Serial.flush();
-    if (!dnsOk) {
-        out.error = "DNS failed";
+    sd2::HttpResponse resp;
+    String error;
+    if (!https.get(OPENCODE_API_HOST, "/zen/go/v1/usage",
+                   OPENCODE_GO_API_KEY, "cc-switch/1.0",
+                   resp, error, timeout_ms)) {
+        out.error = error;
         return false;
     }
-
-    uint32_t t0 = millis();
-    if (!client.connect(OPENCODE_API_HOST, 443)) {
-        char sslErr[64] = {0};
-        client.getLastSSLError(sslErr, sizeof(sslErr));
-        Serial.printf("TLS connect failed after %lu ms, ssl=%s\n", millis() - t0, sslErr);
-        Serial.flush();
-        out.error = "Network error";
-        return false;
-    }
-    Serial.printf("TLS connect ok (%lu ms)\n", (unsigned long)(millis() - t0));
-    Serial.flush();
-
-    uint32_t tSend = millis();
-    client.print("GET /zen/go/v1/usage HTTP/1.1\r\nHost: ");
-    client.print(OPENCODE_API_HOST);
-    client.print("\r\nAuthorization: Bearer ");
-    client.print(OPENCODE_GO_API_KEY);
-    client.print("\r\n"
-                 "User-Agent: cc-switch/1.0\r\n"
-                 "Accept: application/json\r\n"
-                 "Connection: close\r\n\r\n");
-    client.flush();
-    Serial.printf("Request sent (%lu ms), reading...\n",
-                  (unsigned long)(millis() - tSend));
-    Serial.flush();
-
-    // 读取响应，自动拆 header/body、解析状态码、解 chunked
-    sd2::HttpResponse resp = sd2::readHttpResponse(client, timeout_ms);
     out.http_code = resp.httpCode;
-    Serial.printf("HTTP %d (%lu ms), body %u B\n",
-                  out.http_code,
-                  (unsigned long)(millis() - t0),
-                  (unsigned)resp.body.length());
+    Serial.printf("HTTP %d, body %u B\n",
+                  out.http_code, (unsigned)resp.body.length());
 
     DynamicJsonDocument doc(1024);
     DeserializationError err = deserializeJson(doc, resp.body);

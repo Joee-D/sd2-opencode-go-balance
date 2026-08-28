@@ -16,40 +16,25 @@
 #include <time.h>
 #include <TFT_eSPI.h>
 #include <SD2Common.h>
+#include <Sd2App.h>
 
 #include "config.h"
 #include "OpenCodeGoClient.h"
 #include "OpenCodeLogo.h"
 
-TFT_eSPI tft = TFT_eSPI();
+// ---------- 公共运行骨架（sd2-common）----------
+static sd2::App app(POLL_INTERVAL_MS, SLEEP_START_HOUR, SLEEP_END_HOUR);
+TFT_eSPI &tft = app.tft;
+static sd2::Wifi &wifi = app.wifi;
+static sd2::SleepScheduler &sleepSched = app.sleep;
+static sd2::Backlight &backlight = app.backlight;
+static bool &bootDone = app.bootDone;
+static bool &ntpDone = app.ntpDone;
+static uint32_t &lastFetchMs = app.lastFetchMs;
 
-// ---------- 公共基础组件（sd2-common）----------
-static sd2::Wifi wifi;
-static sd2::SleepScheduler sleepSched(SLEEP_START_HOUR, SLEEP_END_HOUR);
-// SD2 固定硬件：背光 GPIO5(D1)，反相 PWM（代码自动反转，数值越大越亮）
-static sd2::Backlight backlight(5, sd2::Backlight::PWM_INVERTED);
-
-// ---------- 颜色（与 sd2-deepseek-balance / sd2-openwrt-traffic 一致）----------
-#define C_BG      tft.color565(0x00, 0x00, 0x00)
-#define C_BORDER  tft.color565(0x28, 0x32, 0x49)
-#define C_SUB     tft.color565(0x8A, 0x94, 0xB8)
-#define C_LABEL   tft.color565(0x9A, 0xA5, 0xC8)
-#define C_ACCENT  tft.color565(0x4D, 0x6B, 0xFE)
-#define C_WHITE   tft.color565(0xFF, 0xFF, 0xFF)
-#define C_GREEN   tft.color565(0x34, 0xD3, 0x99)
-#define C_RED     tft.color565(0xFF, 0x6B, 0x6B)
-#define C_YELLOW  tft.color565(0xF6, 0xC3, 0x43)
-
-// ---------- 状态 ----------
-static bool bootDone = false;
+// ---------- 数据状态 ----------
 static bool hasData = false;
 static bool fetching = false;
-static bool wifiFailShown = false;
-static bool ntpDone = false;
-static uint32_t lastFetchMs = 0;
-static uint32_t lastSleepCheck = 0;
-static uint32_t lastHeapPrint = 0;
-static uint32_t bootStart = 0;
 
 static OpenCodeGoUsage lastData;
 
@@ -171,42 +156,13 @@ void drawMainPage() {
     tft.endWrite();
 }
 
-// ---------- 定时休眠 ----------
-bool isSleepHour() {
-    return sd2::inSleepWindow(sd2::localHour(), SLEEP_START_HOUR, SLEEP_END_HOUR);
+// ---------- 公共骨架回调 ----------
+static void onConnected() {
+    if (!sleepSched.sleeping()) drawMainPage();
 }
 
-void updateSleep() {
-#if ENABLE_SLEEP
-    bool changed = sleepSched.update(sd2::localHour());
-    if (changed && sleepSched.sleeping()) {
-        backlight.off();
-        Serial.println("Sleep mode: display off, fetch paused");
-    } else if (changed && !sleepSched.sleeping()) {
-        backlight.on();
-        if (bootDone) drawMainPage();
-        lastFetchMs = millis() - POLL_INTERVAL_MS; // 醒来立即刷新
-        Serial.println("Wake up: display on");
-    }
-#endif
-}
-
-// ---------- 网络 ----------
-void handleWiFi() {
-    wifi.loop();
-    if (wifi.justConnected()) {
-        Serial.print("WiFi connected, IP: ");
-        Serial.println(wifi.ip().c_str());
-        bootDone = true;
-        if (!sleepSched.sleeping()) drawMainPage();
-        sd2::timeBegin(TZ_OFFSET_SEC, NTP_SERVER);
-        lastFetchMs = millis() - POLL_INTERVAL_MS; // 立即拉取
-    }
-
-    if (!wifi.connected() && !bootDone && !wifiFailShown && millis() - bootStart > 30000) {
-        wifiFailShown = true;
-        drawBootPage(true);
-    }
+static void onWake() {
+    if (bootDone) drawMainPage();
 }
 
 void handleFetch() {
@@ -221,7 +177,7 @@ void handleFetch() {
         }
         return;
     }
-    if (isSleepHour()) return; // 休眠时段不拉取数据
+    if (sleepSched.sleeping()) return; // 休眠时段不拉取数据
 
     // 未填 Key 时直接提示
     if (strlen(OPENCODE_GO_API_KEY) < 20) {
@@ -255,7 +211,6 @@ void handleFetch() {
     } else {
         Serial.printf("Fetch failed: %s (HTTP %d)\n", d.error.c_str(), d.http_code);
     }
-    Serial.printf("Free heap: %u B\n", ESP.getFreeHeap());
 }
 
 // ---------- 主程序 ----------
@@ -265,30 +220,10 @@ void setup() {
     Serial.println();
     Serial.println("SD2 OpenCode Go quota monitor starting...");
 
-    tft.begin();
-    tft.setRotation(0);
-
-    backlight.begin();
-    backlight.setBrightness(BRIGHTNESS);
-
-    bootStart = millis();
-    drawBootPage(false);
-
-    wifi.begin(WIFI_SSID, WIFI_PASSWORD);
+    app.setHooks(drawBootPage, handleFetch, onConnected, nullptr, nullptr, onWake);
+    app.begin(WIFI_SSID, WIFI_PASSWORD, BRIGHTNESS, TZ_OFFSET_SEC, NTP_SERVER);
 }
 
 void loop() {
-    handleWiFi();
-    handleFetch();
-
-    if (millis() - lastSleepCheck >= 1000) {
-        lastSleepCheck = millis();
-        updateSleep();
-    }
-    if (millis() - lastHeapPrint >= 10000) {
-        lastHeapPrint = millis();
-        Serial.printf("Free heap: %u B\n", ESP.getFreeHeap());
-    }
-
-    delay(20);
+    app.loop();
 }
