@@ -4,6 +4,10 @@
 
 固件通过 HTTPS 请求 OpenCode 官方接口 `GET https://opencode.ai/zen/go/v1/usage`，不需要额外客户端/服务器，也不需要 CC Switch 常驻。
 
+## 屏幕效果
+
+![屏幕显示效果](images/screenshot.jpg)
+
 ## 显示内容
 
 - 三行额度：**5H**（5 小时滚动额度）、**WEEK**（周额度）、**MONTH**（月额度）
@@ -53,6 +57,7 @@ src/
 ├── config.example.h  配置模板（复制为 config.h 后填写，config.h 不入库）
 └── config.h          本地配置（.gitignore 忽略，不会提交）
 lib/sd2-common/       公共库子模块：WiFi 连接/校时/休眠/背光/HTTP/格式化
+images/               屏幕效果图
 ```
 
 > 与 [`sd2-deepseek-balance`](https://github.com/Joee-D/sd2-deepseek-balance)、[`sd2-openwrt-traffic`](https://github.com/Joee-D/sd2-openwrt-traffic) 共用的基础功能（WiFi、NTP、定时休眠、背光、HTTP、格式化）已提炼到 [`sd2-common`](https://github.com/Joee-D/sd2-common)，本工程只保留 OpenCode Go 额度相关的界面与请求逻辑。
