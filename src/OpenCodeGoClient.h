@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <Esp.h>
 #include <SD2Common.h>
 
 #include "config.h"
@@ -40,6 +41,14 @@ static sd2::Https https(GTS_ROOT_R4_PEM, VERIFY_TLS_CERT);
 
 #define OPENCODE_API_HOST "opencode.ai"
 
+static String openCodeSessionId() {
+    static String id;
+    if (id.length() == 0) {
+        id = "sd2-opencode-go-balance-" + String(ESP.getChipId(), HEX);
+    }
+    return id;
+}
+
 static void parseWindow(const JsonObject &obj, OpenCodeGoWindow &out) {
     if (obj.isNull())
         return;
@@ -55,9 +64,10 @@ static bool fetchOpenCodeGoUsage(OpenCodeGoUsage &out, uint32_t timeout_ms = 150
 
     sd2::HttpResponse resp;
     String error;
+    String sessionHeader = "x-opencode-session: " + openCodeSessionId();
     if (!https.get(OPENCODE_API_HOST, "/zen/go/v1/usage",
                    OPENCODE_GO_API_KEY, "cc-switch/1.0",
-                   resp, error, timeout_ms)) {
+                   resp, error, timeout_ms, sessionHeader.c_str())) {
         out.error = error;
         return false;
     }

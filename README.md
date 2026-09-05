@@ -12,7 +12,7 @@
 
 - 三行额度：**5H**（5 小时滚动额度）、**WEEK**（周额度）、**MONTH**（月额度）
 - 每行显示剩余百分比、进度条和重置时间（如 `R 08-28 22:00`，本地时区）
-- 默认每 60 秒自动刷新（`config.h` 可改）
+- 默认每 5 分钟自动刷新（`config.h` 可改）
 - 定时休眠：默认 00:00-07:00 关闭显示并停止获取数据（`config.h` 可改）
 
 剩余量按 CC Switch 的提取规则计算：`剩余 = max(100 - percent, 0)`。
@@ -42,7 +42,7 @@
 3. 复制 `src/config.example.h` 为 `src/config.h`，然后编辑：
    - `WIFI_SSID` / `WIFI_PASSWORD`：你的 WiFi
    - `OPENCODE_GO_API_KEY`：在 OpenCode 的 Zen / Go 套餐页获取 Anthropic 兼容 API Key（`sk-` 开头）
-   - `POLL_INTERVAL_MS`：刷新间隔（默认 60 秒）
+   - `POLL_INTERVAL_MS`：刷新间隔（默认 5 分钟）
    - `BRIGHTNESS`：屏幕亮度（0~1023，默认 800）
 4. USB 连接小电视，终端执行 `pio run -t upload`。
 5. 执行 `pio device monitor -b 921600` 可查看请求日志。
@@ -66,9 +66,9 @@ images/               屏幕效果图
 
 1. 开机显示连接页，连接 WiFi。
 2. 通过 NTP 同步系统时间（ESP8266 无 RTC，校验证书前必须有正确时间）。
-3. 用 WiFiClientSecure 建立 TLS 连接，校验 GTS Root R4 根证书，请求 `GET /zen/go/v1/usage`，携带 `Authorization: Bearer <key>`（User-Agent 保持 `cc-switch/1.0`，与 CC Switch 预设一致）。
+3. 用 WiFiClientSecure 建立 TLS 连接，校验 GTS Root R4 根证书，请求 `GET /zen/go/v1/usage`，携带 `Authorization: Bearer <key>`、`x-opencode-session: sd2-opencode-go-balance-<chipId>`（User-Agent 保持 `cc-switch/1.0`，与 CC Switch 预设一致）。
 4. 解析 `usage.rolling` / `usage.weekly` / `usage.monthly` 的 `status`、`percent`、`resetsAt` 并绘制三行额度。
-5. 每 60 秒自动刷新。TLS 握手期间会临时关闭软看门狗，结束请求后立即恢复，避免阻塞握手触发硬件复位导致设备重启。
+5. 每 5 分钟自动刷新。TLS 握手期间会临时关闭软看门狗，结束请求后立即恢复，避免阻塞握手触发硬件复位导致设备重启。
 
 ## 常见问题
 
